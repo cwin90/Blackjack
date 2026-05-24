@@ -18,6 +18,6 @@ public class CardTests
         string cardString = card.ToString();
 
         // Assert
-        Assert.That(cardString, Is.EqualTo("Ace of Heart"), "The ToString method should return the correct format.");
+        Assert.That(cardString, Is.EqualTo("Ace of Hearts"), "The ToString method should return the correct format.");
     }
 }

@@ -41,4 +41,10 @@ public class BlackJackGameTests
         });
     }
 
+    [Test]
+    public void CalculateHandValueTest()
+    {
+        
+    }
+
 }

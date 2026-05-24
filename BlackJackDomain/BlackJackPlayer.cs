@@ -23,15 +23,22 @@ public class BlackJackPlayer : Player
         {
             throw new InvalidOperationException("Cannot bet more chips than you have.");
         }
-        Hands.Where(h => h.IsActive).ToList().ForEach(h => h.Bet += amount); // Place the bet on all active hands
+        Hands.Where(h => h.IsActive).LastOrDefault()?.Bet = amount; // Set the bet for the active hand
         Chips -= amount; // Deduct the bet from the player's chips
     }
 
-    public void WinBet(bool isBlackJack = false)
+    public void WinBet(BlackJackHand hand, bool isBlackJack = false)
     {
 
         int payout = 0;
-        Hands.Where(h => h.IsActive).ToList().ForEach(h => payout = isBlackJack ? (int)(h.Bet * 2.5) : h.Bet * 2); 
+        if (isBlackJack)
+        {
+            payout = (int)(hand.Bet * 2.5); // Blackjack pays 3:2
+        }
+        else
+        {
+            payout = hand.Bet * 2; // Regular win pays 1:1
+        }
         Chips += payout; // Add the winnings to the player's chips
         Stats.RecordWin();
         if(isBlackJack)
@@ -43,12 +50,11 @@ public class BlackJackPlayer : Player
     public void LoseBet()
     {
         Stats.RecordLoss();
-        Chips -= Hands.Where(h => h.IsActive).Sum(h => h.Bet); // Deduct the total bet from the player's chips
     }
 
-    public void PushBet()
+    public void PushBet(BlackJackHand handToPush)
     {
-        Chips += Hands.Where(h => h.IsActive).Sum(h => h.Bet); // Return the bet to the player's chips
+        Chips += handToPush.Bet; // Return the bet to the player's chips
         Stats.RecordTie();
     }
 }
