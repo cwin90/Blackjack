@@ -52,10 +52,10 @@ public class Rank
 public class Suit
 {
     public string Name { get; }
-    public static readonly Suit Diamond = new("Diamond");
-    public static readonly Suit Club = new("Club");
-    public static readonly Suit Heart = new("Heart");
-    public static readonly Suit Spade = new("Spade");
+    public static readonly Suit Diamond = new("Diamonds");
+    public static readonly Suit Club = new("Clubs");
+    public static readonly Suit Heart = new("Hearts");
+    public static readonly Suit Spade = new("Spades");
 
     private Suit(string name)
     {

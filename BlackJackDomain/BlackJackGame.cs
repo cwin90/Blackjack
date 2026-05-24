@@ -12,8 +12,10 @@ public class BlackJackGame
 {
     public BlackJackDeck Deck { get; set; }
     public List<BlackJackPlayer> Players { get; set; }
+    public List<BlackJackPlayer> InactivePlayers { get; set; }
 
     public List<Card> DealerHand { get; set; }
+    int tableMinBet = 5;
     int minPlayers = 1;
     int maxPlayers = 5;
     public BlackJackGame()
@@ -21,6 +23,7 @@ public class BlackJackGame
         Deck = new BlackJackDeck(6); // Using 6 decks for a more realistic casino experience
         DealerHand = new List<Card>();
         Players = new List<BlackJackPlayer>();
+        InactivePlayers = new List<BlackJackPlayer>();
     }
 
     public string StartGame()
@@ -33,9 +36,13 @@ public class BlackJackGame
         }
         foreach(var player in Players)
         {
-            player.Hands.Add(new List<Card>()); // Start with one hand for each player
-            player.Hands[0].Add(Deck.DrawCard());
-            player.Hands[0].Add(Deck.DrawCard());
+            player.Hands.Add(new BlackJackHand()
+            {
+                IsActive = true
+            }); // Start with one hand for each player
+            player.Hands[0].Cards.Add(Deck.DrawCard()); //TODO: Change to Active laters
+            player.Hands[0].Cards.Add(Deck.DrawCard());
+            player.PlaceBet(tableMinBet); // Place minimum bet for each player at the start of the game
         }
         DealerHand.Add(Deck.DrawCard());
         DealerHand.Add(Deck.DrawCard());
@@ -44,10 +51,10 @@ public class BlackJackGame
 
     public void NextHand()
     {
+        InactivePlayers.Clear();
         foreach(var player in Players)
         {
-            player.Hands = new List<List<Card>>(); // Reset to one empty hand
-            player.ActiveHand.Clear();
+            player.Hands = new List<BlackJackHand>(); // Reset to one empty hand
         }
         DealerHand.Clear();
     }
@@ -111,7 +118,7 @@ public class BlackJackGame
         }
         Players.Add(new BlackJackPlayer(name));
     }
-    
+
     public string ShowHands(bool hideDealerHoleCard = true)
     {
         string handOutput = "";
@@ -140,33 +147,203 @@ public class BlackJackGame
     public void CalculateGameResults()
     {
         int dealerValue = CalculateHandValue(DealerHand, out _);
-        foreach(var player in Players)
+        foreach(var player in Players.Where(p => !InactivePlayers.Contains(p)))
         {
             foreach(var hand in player.Hands)
             {
-                int playerValue = CalculateHandValue(hand, out _);
-                if (playerValue > 21)
+                int playerValue = CalculateHandValue(hand.Cards, out _);
+                if(dealerValue > 21)
                 {
-                    Console.WriteLine($"Player {player.Name} busts with {playerValue}. Dealer wins.");
+                    Console.WriteLine($"Dealer busted! Player {player.Name} wins with {playerValue}.");
+                    player.WinBet();
                 }
-                else if (dealerValue > 21)
+                 else if(playerValue > 21)
                 {
-                    Console.WriteLine($"Dealer busts with {dealerValue}. Player {player.Name} wins.");
+                    Console.WriteLine($"Player {player.Name} busted! Dealer wins with {dealerValue} against player's {playerValue}.");
+                    player.LoseBet();
                 }
                 else if (playerValue > dealerValue)
                 {
                     Console.WriteLine($"Player {player.Name} wins with {playerValue} against dealer's {dealerValue}.");
+                    player.WinBet();
                 }
                 else if (playerValue < dealerValue)
                 {
                     Console.WriteLine($"Dealer wins against Player {player.Name} with {dealerValue} against player's {playerValue}.");
+                    player.LoseBet();
                 }
                 else
                 {
                     Console.WriteLine($"Push between Player {player.Name} and Dealer with both at {playerValue}.");
+                    player.PushBet();
                 }
             }
         }
+    }
+    public void DoubleUp(BlackJackPlayer player)
+    {
+        Card newCard = Hit(player.Hands.Where(h => h.IsActive).LastOrDefault().Cards); // Double the bet on the active hand
+        Console.WriteLine($"You drew: {newCard}");
+        Console.WriteLine(ShowHands());
+        player.PlaceBet(player.Hands.Where(h => h.IsActive).LastOrDefault()?.Bet ?? 0); // Double the bet
+    }
+
+    public void Split(BlackJackPlayer player)
+    {
+        var activeHand = player.Hands.Where(h => h.IsActive).FirstOrDefault();
+        if (activeHand == null || activeHand.Cards.Count != 2 || activeHand.Cards[0].Rank.Name != activeHand.Cards[1].Rank.Name)
+        {
+            Console.WriteLine("Cannot split. You must have exactly two cards of the same rank to split.");
+            return;
+        }
+
+        // Create a new hand for the split
+        BlackJackHand newHand = new BlackJackHand();
+        newHand.Cards.Add(activeHand.Cards[1]); // Move the second card to the new hand
+        activeHand.Cards.RemoveAt(1); // Remove the second card from the original hand
+
+        // Add a new card to each hand
+        activeHand.Cards.Add(Deck.DrawCard());
+        newHand.Cards.Add(Deck.DrawCard());
+        newHand.Bet = activeHand.Bet; // Match the bet on the new hand
+        player.Chips -= newHand.Bet; // Deduct the bet for the new hand from the player's chips
+        player.Hands.Add(newHand); // Add the new hand to the player's hands
+        //Playout first hand
+        Console.WriteLine($"Playing first hand: {string.Join(", ", activeHand.Cards)}");
+        PlayHand(player);
+        AddLinespace();
+
+    }
+
+    public void ActivateNextHand(BlackJackPlayer player)
+    {
+        var nextHand = player.Hands.Where(h => !h.IsActive).FirstOrDefault();
+        if (nextHand != null)
+        {
+            nextHand.IsActive = true;
+            Console.WriteLine($"Activating next hand for Player {player.Name}: {string.Join(", ", nextHand.Cards)}");
+            PlayHand(player);
+        }
+        else
+        {
+            Console.WriteLine($"No more hands to activate for Player {player.Name}.");
+        }
+    }
+
+    public bool CheckForBust(List<Card> hand)
+    {
+        int handValue = CalculateHandValue(hand, out _);
+        if (handValue > 21)
+        {
+            Console.WriteLine($"Busted with {handValue}! Hand value exceeds 21.");
+            return true;
+        }
+        return false;
+    }
+    
+    public void AddLinespace()
+    {
+        Console.WriteLine("\n-----------------------------\n");
+    }
+    public bool CheckForInitialBlackJacks()
+    {
+        bool dealerHasBlackJack = CalculateHandValue(DealerHand, out _) == 21;
+        foreach(var player in Players)
+        {
+            bool playerHasBlackJack = CalculateHandValue(player.Hands.Where(h => h.IsActive).FirstOrDefault().Cards, out _) == 21;
+            if (dealerHasBlackJack && playerHasBlackJack)
+            {
+                Console.WriteLine($"Both Dealer and Player {player.Name} have Blackjack! It's a push.");
+                player.PushBet();
+                InactivePlayers.Add(player); // Mark player as inactive for the rest of the hand since it's a push
+            }
+            else if (dealerHasBlackJack)
+            {
+                Console.WriteLine($"Dealer has Blackjack! Player {player.Name} loses.");
+                player.LoseBet();
+                InactivePlayers.Add(player);
+            }
+            else if (playerHasBlackJack)
+            {
+                Console.WriteLine($"Player {player.Name} has Blackjack! Player wins.");
+                player.WinBet(true);
+                InactivePlayers.Add(player);
+            }
+        }
+        return dealerHasBlackJack;
+    }
+
+    //Assume Last Active hand is always the hand being played for simplicity. In a more complex implementation, we would want to track which hand is currently active for the player.
+    //Assume if a player has no more inactive hands, they are done for the round and we can move on to the next player or dealer turn.
+    public void PlayHand(BlackJackPlayer player)
+    {
+        Console.WriteLine("Playing hand...");
+        while(true)
+        {
+            Console.WriteLine("\nEnter 'hit' to draw another card or 'double' to double your bet or 'stand' to end your turn:");
+            var input = Console.ReadLine();
+
+            if (input == "hit")
+            {
+                Card newCard = Hit(player.Hands.Where(h => h.IsActive).LastOrDefault().Cards);
+                Console.WriteLine($"You drew: {newCard}");
+                ShowPlayersActiveHands(player);
+                if (CheckForBust(player.Hands.Where(h => h.IsActive).LastOrDefault().Cards))
+                {
+                    player.LoseBet();
+                    if (player.Hands.Where(h => !h.IsActive).FirstOrDefault() == null)
+                    {
+                        InactivePlayers.Add(player); // Mark player as inactive for the rest of the hand since they busted
+                    }
+                    break;
+                }
+            }
+            else if (input == "stand")
+            {
+                Console.WriteLine("You chose to stand. Your turn is over.");
+                break;
+            }
+            else if(input == "double")
+            {
+                DoubleUp(player);
+                if(CheckForBust(player.Hands.Where(h => h.IsActive).LastOrDefault().Cards))
+                {
+                    player.LoseBet();
+                    if (player.Hands.Where(h => !h.IsActive).FirstOrDefault() == null)
+                    {
+                        InactivePlayers.Add(player); // Mark player as inactive for the rest of the hand since they busted
+                    }
+                }
+                break;
+            }
+            else if(input == "split")
+            {
+                Split(player);
+            }
+            else
+            {
+                Console.WriteLine("Unknown command. Please enter 'hit', 'stand', 'double', or 'reset'.");
+            }
+        }
+        AddLinespace();
+        //Update hand or player status
+        if (player.Hands.Where(h => !h.IsActive).FirstOrDefault() != null)
+        {
+            Console.WriteLine($"Ending hand with: {string.Join(", ", player.Hands.Where(h => h.IsActive).LastOrDefault().Cards)}");
+            Console.WriteLine($"Player {player.Name} has another hand to play. Activating next hand...");
+            ActivateNextHand(player);
+        }
+        else
+        {
+            Console.WriteLine($"Player {player.Name} is done for the round.");
+        }
+    }
+
+
+    public void ShowPlayersActiveHands(BlackJackPlayer player)
+    {
+        Console.WriteLine($"Player {player.Name}'s Hand: {string.Join(", ", player.Hands.Where(h => h.IsActive).LastOrDefault().Cards)}");
+        AddLinespace();
     }
 
     public void ExectuteGame()
@@ -183,84 +360,59 @@ public class BlackJackGame
         }
         while (true)
         {
-            
+            AddLinespace();
             Console.WriteLine(StartGame());
+            AddLinespace();
+            //Check for Player Blackjack
+            var dealerBlackJackFound = CheckForInitialBlackJacks();
+            if(!dealerBlackJackFound)
+            {
+                Console.WriteLine("No dealer blackjack found. Proceeding with player turns...");
 
-            //Check for Dealer Blackjack
-            if (CalculateHandValue(DealerHand, out _) == 21)
-            {
-                Console.WriteLine("Dealer has Blackjack! Dealer wins.");
-                continue;
-            }
-            else
-            {
-                Console.WriteLine("Dealer does not have Blackjack.");
-                foreach(var player in Players)
+                foreach(var player in Players.Where(p => !InactivePlayers.Contains(p)))
                 {
                     Console.WriteLine($"Player {player.Name}'s turn:");
+                    PlayHand(player);
+                    AddLinespace();
+                }
+
+                if (Players.All(p => p.Hands.All(h => h.IsActive && (CalculateHandValue(h.Cards, out _) > 21))))
+                {
+                    Console.WriteLine("All players have busted. Skipping dealer's turn.");
+                }
+                else
+                {
+                    Console.WriteLine("At least one player is still in the game. Proceeding with dealer's turn...");
+                    Console.WriteLine("Dealer's turn:");
                     while(true)
                     {
-                        Console.WriteLine("\nEnter 'hit' to draw another card or 'stand' to end your turn:");
-                        input = Console.ReadLine();
-
-                        if (input == "hit")
+                        int dealerValue = CalculateHandValue(DealerHand, out _);
+                        Console.WriteLine($"Dealer's hand value: {dealerValue}");
+                        if (dealerValue < 17 || Soft17(DealerHand))
                         {
-                            Card newCard = Hit(player.Hands[0]);
-                            Console.WriteLine($"You drew: {newCard}");
-                            Console.WriteLine(ShowHands());
-                            if (CalculateHandValue(player.Hands[0], out _) > 21)
+                            Card newCard = Hit(DealerHand);
+                            Console.WriteLine($"Dealer hits and draws: {newCard}");
+                            if (CalculateHandValue(DealerHand, out _) > 21)
                             {
-                                Console.WriteLine("You busted! Dealer wins.");
+                                Console.WriteLine("Dealer busted! Players win.");
                                 break;
                             }
                         }
-                        else if (input == "stand")
-                        {
-                            Console.WriteLine("You chose to stand. Your turn is over.");
-                            break;
-                        }
                         else
                         {
-                            Console.WriteLine("Unknown command. Please enter 'hit', 'stand', or 'reset'.");
+                            Console.WriteLine("Dealer stands.");
+                            break;
                         }
                     }
                 }
-            }
-
-            //Dealer's turn logic would go here (not implemented in this snippet)
-            Console.WriteLine("Dealer's turn:");
-
-            //If Every Player Busts, skip dealer's turn and calculate results immediately
-            if (Players.All(p => CalculateHandValue(p.Hands[0], out _) > 21))
-            {
-                Console.WriteLine("All players have busted. Skipping dealer's turn.");
             }
             else
             {
-                while(true)
-                {
-                    int dealerValue = CalculateHandValue(DealerHand, out _);
-                    Console.WriteLine($"Dealer's hand value: {dealerValue}");
-                    if (dealerValue < 17 || Soft17(DealerHand))
-                    {
-                        Card newCard = Hit(DealerHand);
-                        Console.WriteLine($"Dealer hits and draws: {newCard}");
-                        if (CalculateHandValue(DealerHand, out _) > 21)
-                        {
-                            Console.WriteLine("Dealer busted! Players win.");
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("Dealer stands.");
-                        break;
-                    }
-                }
+                Console.WriteLine("Dealer has Blackjack. Skipping player turns and proceeding to calculate results...");
             }
 
             CalculateGameResults();
-            Console.WriteLine("Game over. Enter 'reset' to play another hand or any other key to exit.");
+            Console.WriteLine("Game over. Enter 'reset' to play another hand or stats to see current player stats, or any other key to exit.");
             input = Console.ReadLine();
             if (input == "reset")
             {
@@ -287,6 +439,20 @@ public class BlackJackGame
                 NextHand();
                 Console.WriteLine("Game reset. Starting new hand...");
                 Console.WriteLine(ShowHands(true));
+            }
+            else if(input == "stats")
+            {
+                foreach(var player in Players)
+                {
+                    Console.WriteLine($"Player {player.Name} Stats:");
+                    Console.WriteLine($"  Chips: {player.Chips}");
+                    Console.WriteLine($"  Wins: {player.Stats.Wins}");
+                    Console.WriteLine($"  Losses: {player.Stats.Losses}");
+                    Console.WriteLine($"  Ties: {player.Stats.Ties}");
+                    Console.WriteLine($"  Total Games: {player.Stats.TotalGames}");
+                    Console.WriteLine($"  Blackjacks: {player.Stats.BlackJacks}");
+                }
+                break;
             }
             else
             {
