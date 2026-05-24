@@ -3,7 +3,7 @@ using BlackJackDomain;
 using System;
 
 Console.WriteLine("Hello, World!");
-BlackJackGame game = new BlackJackGame();
+BlackJackGame game = new BlackJackGame(new ConsoleBlackJackUI());
  // Process command-line arguments
 if (args.Length > 0)
 {
